@@ -39,8 +39,8 @@ final class RulesStore {
 
         let bundled = bundle.url(forResource: "tubeclean", withExtension: "js")
             .flatMap { try? String(contentsOf: $0, encoding: .utf8) }
-            .flatMap(Self.parse)
-        let cached = (try? String(contentsOf: cacheURL, encoding: .utf8)).flatMap(Self.parse)
+            .flatMap { Self.parse($0) }
+        let cached = (try? String(contentsOf: cacheURL, encoding: .utf8)).flatMap { Self.parse($0) }
 
         switch (bundled, cached) {
         case let (b?, c?): current = c.version > b.version ? c : b
@@ -53,14 +53,24 @@ final class RulesStore {
         Self.log.info("rules version \(self.current.version) in use")
     }
 
+    /// Versions are UTC timestamps (yyyyMMddHHmm). One more than a day ahead
+    /// is a mistake or an attack: accepting it would block every later update.
+    nonisolated static func maxAcceptableVersion(now: Date = Date()) -> Int64 {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "UTC")!
+        let c = cal.dateComponents([.year, .month, .day, .hour, .minute], from: now.addingTimeInterval(86_400))
+        return Int64(c.year!) * 100_000_000 + Int64(c.month!) * 1_000_000
+            + Int64(c.day!) * 10_000 + Int64(c.hour!) * 100 + Int64(c.minute!)
+    }
+
     /// Parses and sanity-checks a script. Returns nil if it isn't one of ours.
-    nonisolated static func parse(_ source: String) -> Rules? {
+    nonisolated static func parse(_ source: String, now: Date = Date()) -> Rules? {
         guard source.utf8.count <= maxBytes else { return nil }
         guard let firstLine = source.split(separator: "\n", maxSplits: 1).first,
               let range = firstLine.range(of: #"tubeclean-rules version=(\d{1,18})"#, options: .regularExpression)
         else { return nil }
         let digits = firstLine[range].split(separator: "=").last.map(String.init) ?? ""
-        guard let version = Int64(digits) else { return nil }
+        guard let version = Int64(digits), version <= maxAcceptableVersion(now: now) else { return nil }
         return Rules(version: version, source: source)
     }
 

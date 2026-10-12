@@ -12,6 +12,7 @@ final class BrowserController: NSObject {
     let webView: WKWebView
     private let messages = ScriptMessageProxy()
     private var started = false
+    private var recentCrashes: [Date] = []
     #if DEBUG
     private var evalDone = false
     #endif
@@ -37,7 +38,9 @@ final class BrowserController: NSObject {
         webView.navigationDelegate = self
         webView.uiDelegate = self
         webView.allowsBackForwardNavigationGestures = true
+        #if DEBUG
         webView.isInspectable = true // Safari > Develop on a Mac can attach
+        #endif
         webView.scrollView.contentInsetAdjustmentBehavior = .automatic
 
         let refresh = UIRefreshControl()
@@ -61,11 +64,19 @@ final class BrowserController: NSObject {
         config.userContentController.add(messages, contentWorld: .page, name: "tubeclean")
 
         installScript(rules.current)
+        // A new script takes effect on the next full page load; reloading
+        // here would interrupt whatever he is watching.
         rules.onUpdate = { [weak self] new in
             self?.installScript(new)
-            self?.webView.reload()
         }
     }
+
+    /// Stops the script before its first statement on any page that is not
+    /// YouTube, so a bad rules file can never run on Google's sign-in pages.
+    /// A top-level `throw` aborts the whole script; `throw 0` avoids calling
+    /// anything the file could redefine through hoisting.
+    static let youTubeOnlyGuard =
+        "if (!/^(?:[a-z0-9-]+\\.)*youtube\\.com$/.test(location.hostname)) throw 0;\n"
 
     /// "Version/27.0 Safari/605.1.15", matching the running iPadOS.
     static var safariSuffix: String {
@@ -77,9 +88,11 @@ final class BrowserController: NSObject {
         guard !started else { return }
         started = true
         await rejectConsentIfUnset()
+        var start = NavigationPolicy.home
+        #if DEBUG
         // Test hook: `-TCStartURL <url>` as a launch argument opens that page.
-        let start = UserDefaults.standard.string(forKey: "TCStartURL").flatMap(URL.init(string:))
-            ?? NavigationPolicy.home
+        if let s = UserDefaults.standard.string(forKey: "TCStartURL"), let u = URL(string: s) { start = u }
+        #endif
         webView.load(URLRequest(url: start))
         await rules.refreshIfDue()
     }
@@ -102,11 +115,13 @@ final class BrowserController: NSObject {
     private func installScript(_ rules: RulesStore.Rules) {
         let ucc = webView.configuration.userContentController
         ucc.removeAllUserScripts()
+        #if DEBUG
         // Test hook: `-TCNoRules YES` runs without the blocking script.
         if UserDefaults.standard.bool(forKey: "TCNoRules") { return }
+        #endif
         guard !rules.source.isEmpty else { return }
         ucc.addUserScript(WKUserScript(
-            source: rules.source,
+            source: Self.youTubeOnlyGuard + rules.source,
             injectionTime: .atDocumentStart,
             forMainFrameOnly: true,
             in: .page
@@ -138,7 +153,15 @@ extension BrowserController: WKNavigationDelegate {
 
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
         // iPadOS kills the web process under memory pressure; come back.
-        webView.reload()
+        // If it keeps crashing, or nothing had loaded yet, start from home.
+        let now = Date()
+        recentCrashes = recentCrashes.filter { now.timeIntervalSince($0) < 10 } + [now]
+        Self.log.error("web process ended (\(self.recentCrashes.count) in 10 s)")
+        if webView.url == nil || recentCrashes.count > 1 {
+            webView.load(URLRequest(url: NavigationPolicy.home))
+        } else {
+            webView.reload()
+        }
     }
 
     #if DEBUG
@@ -172,9 +195,12 @@ extension BrowserController: WKUIDelegate {
         for navigationAction: WKNavigationAction,
         windowFeatures: WKWindowFeatures
     ) -> WKWebView? {
-        if let url = navigationAction.request.url,
-           NavigationPolicy.decide(url, isMainFrame: true) != .block {
-            webView.load(URLRequest(url: url))
+        guard let url = navigationAction.request.url,
+              ["https", "http"].contains(url.scheme?.lowercased() ?? "") else { return nil }
+        switch NavigationPolicy.decide(url, isMainFrame: true) {
+        case .allow: webView.load(URLRequest(url: url))
+        case .redirect(let target): webView.load(URLRequest(url: target))
+        case .block: Self.log.info("blocked new window \(url.absoluteString, privacy: .public)")
         }
         return nil
     }

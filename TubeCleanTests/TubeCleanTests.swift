@@ -24,8 +24,27 @@ final class NavigationPolicyTests: XCTestCase {
         XCTAssertEqual(NavigationPolicy.decide(u("mailto:a@b.c"), isMainFrame: true), .block)
     }
 
-    func testSubframesAllowed() {
-        XCTAssertEqual(NavigationPolicy.decide(u("https://example.com/frame"), isMainFrame: false), .allow)
+    func testRestOfGoogleBlocked() {
+        for s in ["https://myaccount.google.com/", "https://www.google.com/search?q=x",
+                  "https://www.google.com/amp/s/example.com", "https://sites.google.com/view/x",
+                  "https://mail.google.com/", "https://google.co.com/", "https://accounts.google.evil.com/",
+                  "https://accounts.google.co.com.evil/", "https://www.youtube.com/redirect?q=https://example.com"] {
+            XCTAssertEqual(NavigationPolicy.decide(u(s), isMainFrame: true), .block, s)
+        }
+    }
+
+    func testSubframes() {
+        XCTAssertEqual(NavigationPolicy.decide(u("https://example.com/frame"), isMainFrame: false), .block)
+        XCTAssertEqual(NavigationPolicy.decide(u("https://www.google.com/amp/s/example.com"), isMainFrame: false), .block)
+        XCTAssertEqual(NavigationPolicy.decide(u("https://www.youtube.com/embed/x"), isMainFrame: false), .allow)
+        XCTAssertEqual(NavigationPolicy.decide(u("https://www.google.com/recaptcha/api2/anchor"), isMainFrame: false), .allow)
+        XCTAssertEqual(NavigationPolicy.decide(u("https://www.gstatic.com/x.js"), isMainFrame: false), .allow)
+        XCTAssertEqual(NavigationPolicy.decide(u("about:blank"), isMainFrame: false), .allow)
+    }
+
+    func testInlineSchemesInMainFrame() {
+        XCTAssertEqual(NavigationPolicy.decide(u("about:blank"), isMainFrame: true), .allow)
+        XCTAssertEqual(NavigationPolicy.decide(u("data:text/html,hi"), isMainFrame: true), .block)
     }
 
     func testShortsRedirectHome() {
@@ -49,6 +68,13 @@ final class RulesParseTests: XCTestCase {
     func testParsesVersion() {
         let r = RulesStore.parse("/* tubeclean-rules version=202610120300 */\n(()=>{})();")
         XCTAssertEqual(r?.version, 202610120300)
+    }
+
+    func testRejectsFarFutureVersion() {
+        let now = Date(timeIntervalSince1970: 1_791_763_200) // 2026-10-12 00:00 UTC
+        XCTAssertNotNil(RulesStore.parse("/* tubeclean-rules version=202610122300 */\n", now: now))
+        XCTAssertNil(RulesStore.parse("/* tubeclean-rules version=202610140000 */\n", now: now))
+        XCTAssertNil(RulesStore.parse("/* tubeclean-rules version=999999999999999999 */\n", now: now))
     }
 
     func testRejectsForeignFile() {
