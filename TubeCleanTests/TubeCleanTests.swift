@@ -28,7 +28,7 @@ final class NavigationPolicyTests: XCTestCase {
         for s in ["https://myaccount.google.com/", "https://www.google.com/search?q=x",
                   "https://www.google.com/amp/s/example.com", "https://sites.google.com/view/x",
                   "https://mail.google.com/", "https://google.co.com/", "https://accounts.google.evil.com/",
-                  "https://accounts.google.co.com.evil/", "https://www.youtube.com/redirect?q=https://example.com"] {
+                  "https://accounts.google.co.com.evil/", "https://accounts.google.co.de/", "https://www.youtube.com/redirect?q=https://example.com"] {
             XCTAssertEqual(NavigationPolicy.decide(u(s), isMainFrame: true), .block, s)
         }
     }
@@ -43,7 +43,7 @@ final class NavigationPolicyTests: XCTestCase {
     }
 
     func testInlineSchemesInMainFrame() {
-        XCTAssertEqual(NavigationPolicy.decide(u("about:blank"), isMainFrame: true), .allow)
+        XCTAssertEqual(NavigationPolicy.decide(u("about:blank"), isMainFrame: true), .block)
         XCTAssertEqual(NavigationPolicy.decide(u("data:text/html,hi"), isMainFrame: true), .block)
     }
 
@@ -75,6 +75,8 @@ final class RulesParseTests: XCTestCase {
         XCTAssertNotNil(RulesStore.parse("/* tubeclean-rules version=202610122300 */\n", now: now))
         XCTAssertNil(RulesStore.parse("/* tubeclean-rules version=202610140000 */\n", now: now))
         XCTAssertNil(RulesStore.parse("/* tubeclean-rules version=999999999999999999 */\n", now: now))
+        XCTAssertNil(RulesStore.parse("/* tubeclean-rules version=202610129999 */\n", now: now))
+        XCTAssertNil(RulesStore.parse("var x; /* tubeclean-rules version=202610120000 */\n", now: now))
     }
 
     func testRejectsForeignFile() {

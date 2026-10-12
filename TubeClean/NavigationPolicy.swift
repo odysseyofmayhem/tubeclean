@@ -17,17 +17,15 @@ enum NavigationPolicy {
         h == "youtube.com" || h.hasSuffix(".youtube.com")
     }
 
-    /// accounts.google.com, accounts.google.co.uk, accounts.google.de, ...
-    /// Exactly `accounts.google.<tld>` or `accounts.google.co.<cc>`; nothing
-    /// else on Google (no myaccount, search, sites, AMP viewer).
+    /// Google's sign-in hosts, listed exactly. Pattern matching on country
+    /// domains let in hosts Google does not own (accounts.google.co.de).
+    /// Nothing else on Google is allowed (no myaccount, search, sites, AMP).
+    private static let googleSignInHosts: Set<String> = [
+        "accounts.google.com", "accounts.google.co.uk",
+    ]
+
     private static func isGoogleSignIn(_ h: String) -> Bool {
-        let labels = h.split(separator: ".").map(String.init)
-        guard labels.count >= 3, labels[0] == "accounts", labels[1] == "google" else { return false }
-        let tld = labels.dropFirst(2)
-        let isCC = { (s: String) in s.count == 2 && s.allSatisfy(\.isLetter) }
-        if tld.count == 1 { return tld.first == "com" || isCC(tld.first!) }
-        if tld.count == 2 { return ["co", "com"].contains(tld.first!) && isCC(tld.last!) }
-        return false
+        googleSignInHosts.contains(h)
     }
 
     /// Hosts the main frame may show.
@@ -60,9 +58,10 @@ enum NavigationPolicy {
 
     static func decide(_ url: URL, isMainFrame: Bool) -> Decision {
         guard let scheme = url.scheme?.lowercased() else { return .block }
-        // Inline documents (srcdoc frames, blob players) stay in the page.
+        // Inline documents (srcdoc frames, blob players) may load in frames.
+        // In the main frame they could hold a page the script never runs on.
         if scheme == "about" || scheme == "blob" || scheme == "data" {
-            return isMainFrame && scheme != "about" ? .block : .allow
+            return isMainFrame ? .block : .allow
         }
         guard scheme == "https" || scheme == "http", let host = url.host?.lowercased() else { return .block }
 

@@ -94,7 +94,16 @@ final class BrowserController: NSObject {
         if let s = UserDefaults.standard.string(forKey: "TCStartURL"), let u = URL(string: s) { start = u }
         #endif
         webView.load(URLRequest(url: start))
-        await rules.refreshIfDue()
+        // Check hourly as well as on launch and return to the app, so a
+        // session left open all day still picks up fixes. refreshIfDue
+        // only downloads when the 6-hour interval has passed.
+        // The controller lives as long as the app, so the loop does too.
+        Task {
+            while true {
+                await rules.refreshIfDue()
+                try? await Task.sleep(for: .seconds(3600))
+            }
+        }
     }
 
     /// Sets YouTube's "Reject all" consent cookie on first run so the

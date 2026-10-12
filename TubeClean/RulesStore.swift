@@ -64,14 +64,27 @@ final class RulesStore {
     }
 
     /// Parses and sanity-checks a script. Returns nil if it isn't one of ours.
+    /// The first line must be exactly the header, with a real UTC timestamp.
     nonisolated static func parse(_ source: String, now: Date = Date()) -> Rules? {
-        guard source.utf8.count <= maxBytes else { return nil }
-        guard let firstLine = source.split(separator: "\n", maxSplits: 1).first,
-              let range = firstLine.range(of: #"tubeclean-rules version=(\d{1,18})"#, options: .regularExpression)
+        guard source.utf8.count <= maxBytes,
+              let firstLine = source.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false).first,
+              firstLine.wholeMatch(of: /\/\* tubeclean-rules version=\d{12} \*\//) != nil
         else { return nil }
-        let digits = firstLine[range].split(separator: "=").last.map(String.init) ?? ""
-        guard let version = Int64(digits), version <= maxAcceptableVersion(now: now) else { return nil }
+        let digits = firstLine.dropFirst("/* tubeclean-rules version=".count).prefix(12)
+        guard let version = Int64(digits), isTimestamp(String(digits)),
+              version <= maxAcceptableVersion(now: now) else { return nil }
         return Rules(version: version, source: source)
+    }
+
+    /// True if yyyyMMddHHmm is a real date and time.
+    nonisolated private static func isTimestamp(_ s: String) -> Bool {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone(identifier: "UTC")
+        f.dateFormat = "yyyyMMddHHmm"
+        f.isLenient = false
+        guard let d = f.date(from: s) else { return false }
+        return f.string(from: d) == s
     }
 
     func refreshIfDue(force: Bool = false) async {
@@ -82,23 +95,18 @@ final class RulesStore {
         refreshing = true
         defer { refreshing = false }
 
-        var request = URLRequest(url: remoteURL, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 20)
-        if let etag = defaults.string(forKey: "rulesETag") {
-            request.setValue(etag, forHTTPHeaderField: "If-None-Match")
-        }
+        // No ETag: the file is ~100 KB every 6 h, and a stale ETag could
+        // keep answering 304 while the app holds older rules.
+        let request = URLRequest(url: remoteURL, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 20)
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse else { return }
             defaults.set(now, forKey: "rulesLastCheck")
-            if http.statusCode == 304 { return }
             guard http.statusCode == 200,
                   let text = String(data: data, encoding: .utf8),
                   let rules = Self.parse(text) else {
                 Self.log.error("rules download rejected (HTTP \(http.statusCode))")
                 return
-            }
-            if let etag = http.value(forHTTPHeaderField: "ETag") {
-                defaults.set(etag, forKey: "rulesETag")
             }
             guard rules.version > current.version else { return }
             try data.write(to: cacheURL, options: .atomic)
