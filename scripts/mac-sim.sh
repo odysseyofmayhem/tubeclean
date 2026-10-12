@@ -21,10 +21,13 @@ xcrun simctl bootstatus '$sim' -b >/dev/null
 xcrun simctl install '$sim' \$app
 xcrun simctl terminate '$sim' uk.co.ilmaris.tubeclean 2>/dev/null || true
 start=\$(date '+%Y-%m-%d %H:%M:%S')
-xcrun simctl launch '$sim' uk.co.ilmaris.tubeclean -TCStartURL '$url' $EXTRA >/dev/null
+xcrun simctl launch '$sim' uk.co.ilmaris.tubeclean -TCStartURL '$url' -TCMuted YES $EXTRA >/dev/null
 sleep $secs
 n=\$(date +%s); xcrun simctl io '$sim' screenshot build/sim-\$n.png >/dev/null 2>&1; echo shot build/sim-\$n.png
 xcrun simctl spawn '$sim' log show --info --debug --style compact --start \"\$start\" \
-  --predicate 'subsystem == \"uk.co.ilmaris.tubeclean\"' 2>/dev/null | grep -v '^Timestamp' | cut -c 1-400 | tail -40"
+  --predicate 'subsystem == \"uk.co.ilmaris.tubeclean\"' 2>/dev/null | grep -v '^Timestamp' | cut -c 1-400 | tail -40
+# Never leave the simulator running: it plays through the Mac's speakers.
+xcrun simctl terminate '$sim' uk.co.ilmaris.tubeclean 2>/dev/null || true
+xcrun simctl shutdown '$sim' 2>/dev/null || true"
 mkdir -p "$here/build"
 rsync -a -e 'ssh -o BatchMode=yes' "$mac:$dest/build/sim-*.png" "$here/build/" 2>/dev/null || true

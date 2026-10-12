@@ -125,6 +125,12 @@ final class BrowserController: NSObject {
         let ucc = webView.configuration.userContentController
         ucc.removeAllUserScripts()
         #if DEBUG
+        // Test hook: `-TCMuted YES` keeps simulator runs silent.
+        if UserDefaults.standard.bool(forKey: "TCMuted") {
+            ucc.addUserScript(WKUserScript(
+                source: "setInterval(()=>{for(const v of document.querySelectorAll('video,audio'))v.muted=true},200)",
+                injectionTime: .atDocumentStart, forMainFrameOnly: false, in: .page))
+        }
         // Test hook: `-TCNoRules YES` runs without the blocking script.
         if UserDefaults.standard.bool(forKey: "TCNoRules") { return }
         #endif
