@@ -300,18 +300,40 @@ final class ScriptMessageProxy: NSObject, WKScriptMessageHandler {
 }
 
 /// Plain container so SwiftUI can host the long-lived web view.
+///
+/// The web view is sized by frame in layoutSubviews, not with constraints:
+/// during element full screen WebKit lifts the web view into its own window
+/// and puts it back afterwards, which drops any constraints tying it here.
+/// The page then renders into a zero-size or stale frame (black in full
+/// screen, white after). Re-adding and re-sizing on every layout pass is
+/// immune to that.
 final class WKWebViewContainer: UIView {
+    private let webView: WKWebView
+    private var fullscreenObservation: NSKeyValueObservation?
+
     init(webView: WKWebView) {
+        self.webView = webView
         super.init(frame: .zero)
         backgroundColor = .systemBackground
-        webView.translatesAutoresizingMaskIntoConstraints = false
+        webView.translatesAutoresizingMaskIntoConstraints = true
         addSubview(webView)
-        NSLayoutConstraint.activate([
-            webView.leadingAnchor.constraint(equalTo: leadingAnchor),
-            webView.trailingAnchor.constraint(equalTo: trailingAnchor),
-            webView.topAnchor.constraint(equalTo: safeAreaLayoutGuide.topAnchor),
-            webView.bottomAnchor.constraint(equalTo: bottomAnchor),
-        ])
+        // When full screen ends, take the web view back and size it again.
+        fullscreenObservation = webView.observe(\.fullscreenState, options: [.new]) { [weak self] wv, _ in
+            Task { @MainActor in
+                guard let self, wv.fullscreenState == .notInFullscreen else { return }
+                self.setNeedsLayout()
+                self.layoutIfNeeded()
+            }
+        }
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        // During full screen WebKit owns the view; leave it alone.
+        guard webView.fullscreenState == .notInFullscreen else { return }
+        if webView.superview !== self { addSubview(webView) }
+        let target = bounds.inset(by: UIEdgeInsets(top: safeAreaInsets.top, left: 0, bottom: 0, right: 0))
+        if webView.frame != target { webView.frame = target }
     }
 
     @available(*, unavailable)
