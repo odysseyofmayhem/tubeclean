@@ -13,9 +13,16 @@ struct TubeCleanApp: App {
 
     var body: some Scene {
         WindowGroup {
-            BrowserView(controller: browser)
-                .ignoresSafeArea(.container, edges: .bottom)
-                .task { await browser.start() }
+            ZStack {
+                BrowserView(controller: browser)
+                    .ignoresSafeArea(.container, edges: .bottom)
+                if browser.load.phase != .ready {
+                    SplashView(phase: browser.load.phase, retry: browser.retry)
+                        .transition(.opacity)
+                }
+            }
+            .animation(.easeOut(duration: 0.35), value: browser.load.phase)
+            .task { await browser.start() }
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {

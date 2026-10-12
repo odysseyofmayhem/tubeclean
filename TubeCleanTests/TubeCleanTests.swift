@@ -4,9 +4,15 @@ import XCTest
 final class NavigationPolicyTests: XCTestCase {
     private func u(_ s: String) -> URL { URL(string: s)! }
 
+    func testMobileSiteGoesToDesktop() {
+        XCTAssertEqual(NavigationPolicy.decide(u("https://m.youtube.com/"), isMainFrame: true),
+                       .redirect(u("https://www.youtube.com/?app=desktop")))
+        XCTAssertEqual(NavigationPolicy.decide(u("https://m.youtube.com/watch?v=abc&app=m"), isMainFrame: true),
+                       .redirect(u("https://www.youtube.com/watch?v=abc&app=desktop")))
+    }
+
     func testYouTubeAllowed() {
         XCTAssertEqual(NavigationPolicy.decide(u("https://www.youtube.com/watch?v=abc"), isMainFrame: true), .allow)
-        XCTAssertEqual(NavigationPolicy.decide(u("https://m.youtube.com/"), isMainFrame: true), .allow)
         XCTAssertEqual(NavigationPolicy.decide(u("https://www.youtube.com/@SomeChannel/videos"), isMainFrame: true), .allow)
     }
 

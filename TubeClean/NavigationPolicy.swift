@@ -73,6 +73,19 @@ enum NavigationPolicy {
         // outside links; it leads nowhere we allow.
         if isYouTube(host) && url.path == "/redirect" { return .block }
         if isShorts(url) { return .redirect(home) }
+        // YouTube's own script moves touch devices to the mobile site. Keep
+        // the desktop site: it is what Safari on iPad shows, and what the
+        // blocking rules target and were tested on. app=desktop stops the
+        // bounce back.
+        if host == "m.youtube.com" {
+            var c = URLComponents(url: url, resolvingAgainstBaseURL: false)
+            c?.host = "www.youtube.com"
+            c?.scheme = "https"
+            var items = (c?.queryItems ?? []).filter { $0.name != "app" }
+            items.append(URLQueryItem(name: "app", value: "desktop"))
+            c?.queryItems = items
+            if let target = c?.url { return .redirect(target) }
+        }
         // youtu.be/<id> is a short link to a normal video.
         if host == "youtu.be" {
             let id = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))

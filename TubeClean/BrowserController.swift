@@ -10,6 +10,9 @@ final class BrowserController: NSObject {
 
     let rules: RulesStore
     let webView: WKWebView
+    /// Splash screen state: loading until the first YouTube page is shown.
+    let load = LoadState()
+    private var splashTimeout: Task<Void, Never>?
     private let messages = ScriptMessageProxy()
     private var started = false
     private var recentCrashes: [Date] = []
@@ -97,6 +100,7 @@ final class BrowserController: NSObject {
         if let s = UserDefaults.standard.string(forKey: "TCStartURL"), let u = URL(string: s) { start = u }
         #endif
         webView.load(URLRequest(url: start))
+        armSplashTimeout()
         // Check hourly as well as on launch and return to the app, so a
         // session left open all day still picks up fixes. refreshIfDue
         // only downloads when the 6-hour interval has passed.
@@ -107,6 +111,41 @@ final class BrowserController: NSObject {
                 try? await Task.sleep(for: .seconds(3600))
             }
         }
+    }
+
+    /// Called by the splash screen's "Try again" button.
+    func retry() {
+        load.phase = .loading
+        webView.load(URLRequest(url: NavigationPolicy.home))
+        armSplashTimeout()
+    }
+
+    /// The splash should never trap him: if the page is still loading after
+    /// 15 s, show the web view anyway (it may still be filling in).
+    private func armSplashTimeout() {
+        splashTimeout?.cancel()
+        splashTimeout = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(15))
+            guard let self, !Task.isCancelled, self.load.phase == .loading else { return }
+            Self.log.info("splash timeout; showing page")
+            self.load.phase = .ready
+        }
+    }
+
+    private func splashDone() {
+        guard load.phase != .ready else { return }
+        splashTimeout?.cancel()
+        load.phase = .ready
+    }
+
+    private func splashFailed(_ error: Error) {
+        guard load.phase == .loading else { return }
+        let ns = error as NSError
+        // Cancelled navigations (our own redirects, blocked links) are not failures.
+        if ns.domain == NSURLErrorDomain && ns.code == NSURLErrorCancelled { return }
+        if ns.domain == "WebKitErrorDomain" && ns.code == 102 { return } // frame load interrupted
+        splashTimeout?.cancel()
+        load.phase = .failed(ns.localizedDescription)
     }
 
     /// Sets YouTube's "Reject all" consent cookie on first run so the
@@ -182,20 +221,46 @@ extension BrowserController: WKNavigationDelegate {
         }
     }
 
+    /// YouTube draws its page soon after the first commit; hide the splash
+    /// once the page has painted something (didCommit + a short grace), or
+    /// at the latest when loading finishes.
+    func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+        guard load.phase == .loading, webView.url?.host?.hasSuffix("youtube.com") == true else { return }
+        Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(1500))
+            self?.splashDone()
+        }
+    }
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        splashDone()
+        #if DEBUG
+        runEvalHook()
+        #endif
+    }
+
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        splashFailed(error)
+    }
+
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        splashFailed(error)
+    }
+
     #if DEBUG
     /// Test hook: `-TCEvalJS <base64 js>` runs once after the first page
     /// loads, and logs the result. Debug builds only.
-    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+    private func runEvalHook() {
         guard !evalDone,
               let b64 = UserDefaults.standard.string(forKey: "TCEvalJS"),
               let data = Data(base64Encoded: b64),
               let js = String(data: data, encoding: .utf8) else { return }
         evalDone = true
-        Self.log.info("eval scheduled on \(webView.url?.absoluteString ?? "-", privacy: .public)")
+        Self.log.info("eval scheduled on \(self.webView.url?.absoluteString ?? "-", privacy: .public)")
         Task {
             try? await Task.sleep(for: .seconds(4))
             do {
-                let result = try await webView.evaluateJavaScript(js)
+                let result = try await self.webView.evaluateJavaScript(js)
                 Self.log.info("eval: \(String(describing: result), privacy: .public)")
             } catch {
                 Self.log.error("eval failed: \(error.localizedDescription, privacy: .public)")
