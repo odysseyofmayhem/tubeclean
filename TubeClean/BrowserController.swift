@@ -12,6 +12,9 @@ final class BrowserController: NSObject {
     let webView: WKWebView
     private let messages = ScriptMessageProxy()
     private var started = false
+    #if DEBUG
+    private var evalDone = false
+    #endif
 
     init(rules: RulesStore) {
         self.rules = rules
@@ -45,7 +48,15 @@ final class BrowserController: NSObject {
         webView.scrollView.refreshControl = refresh
 
         messages.onMessage = { body in
-            Self.log.info("page: \(String(describing: body), privacy: .public)")
+            let text: String
+            if JSONSerialization.isValidJSONObject(body),
+               let data = try? JSONSerialization.data(withJSONObject: body, options: [.sortedKeys]),
+               let s = String(data: data, encoding: .utf8) {
+                text = s
+            } else {
+                text = String(describing: body)
+            }
+            Self.log.info("page: \(text, privacy: .public)")
         }
         config.userContentController.add(messages, contentWorld: .page, name: "tubeclean")
 
@@ -129,6 +140,28 @@ extension BrowserController: WKNavigationDelegate {
         // iPadOS kills the web process under memory pressure; come back.
         webView.reload()
     }
+
+    #if DEBUG
+    /// Test hook: `-TCEvalJS <base64 js>` runs once after the first page
+    /// loads, and logs the result. Debug builds only.
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        guard !evalDone,
+              let b64 = UserDefaults.standard.string(forKey: "TCEvalJS"),
+              let data = Data(base64Encoded: b64),
+              let js = String(data: data, encoding: .utf8) else { return }
+        evalDone = true
+        Self.log.info("eval scheduled on \(webView.url?.absoluteString ?? "-", privacy: .public)")
+        Task {
+            try? await Task.sleep(for: .seconds(4))
+            do {
+                let result = try await webView.evaluateJavaScript(js)
+                Self.log.info("eval: \(String(describing: result), privacy: .public)")
+            } catch {
+                Self.log.error("eval failed: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+    }
+    #endif
 }
 
 extension BrowserController: WKUIDelegate {
