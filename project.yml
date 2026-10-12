@@ -1,0 +1,47 @@
+name: TubeClean
+options:
+  bundleIdPrefix: uk.co.ilmaris
+  deploymentTarget:
+    iOS: "27.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    CODE_SIGN_STYLE: Automatic
+    # Set your team in Xcode (Signing & Capabilities) before running on a device.
+    DEVELOPMENT_TEAM: ""
+targets:
+  TubeClean:
+    type: application
+    platform: iOS
+    sources:
+      - path: TubeClean
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: uk.co.ilmaris.tubeclean
+        TARGETED_DEVICE_FAMILY: "2"
+        INFOPLIST_FILE: TubeClean/Info.plist
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        GENERATE_INFOPLIST_FILE: NO
+  TubeCleanTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: TubeCleanTests
+    dependencies:
+      - target: TubeClean
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        TARGETED_DEVICE_FAMILY: "2"
+schemes:
+  TubeClean:
+    build:
+      targets:
+        TubeClean: all
+        TubeCleanTests: [test]
+    test:
+      targets:
+        - TubeCleanTests
