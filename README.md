@@ -27,7 +27,7 @@ The script lives in the sibling repo `tubeclean-rules`. A copy is bundled in the
 
 ## Build and install on his iPad
 
-You need Xcode 27 and XcodeGen. The copy at `~/.local/xcodegen/bin/xcodegen` on Lee's Mac works.
+You need Xcode 27 and XcodeGen. The app runs on iPadOS 26 and later. The copy at `~/.local/xcodegen/bin/xcodegen` on Lee's Mac works.
 
 1. `cd tubeclean && ~/.local/xcodegen/bin/xcodegen generate`
 2. `open TubeClean.xcodeproj`
