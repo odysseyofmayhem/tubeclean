@@ -10,7 +10,7 @@ dest=${MAC_DIR:-Projects/Ilmaris/tubeclean-build}
 url=${1:-https://www.youtube.com/}
 secs=${2:-25}
 EXTRA=${3:-}
-sim='iPad Air 11-inch (M4)'
+sim="${SIM:-iPad Air 11-inch (M4)}"
 rsync -a --delete --exclude .git --exclude build -e 'ssh -o BatchMode=yes' "$here/" "$mac:$dest/"
 ssh -o BatchMode=yes "$mac" "set -e; cd $dest && ~/.local/xcodegen/bin/xcodegen generate -q
 xcodebuild -project TubeClean.xcodeproj -scheme TubeClean -destination 'platform=iOS Simulator,name=$sim' \

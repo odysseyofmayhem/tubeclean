@@ -26,6 +26,9 @@ final class BrowserController: NSObject {
         config.allowsInlineMediaPlayback = true
         config.allowsPictureInPictureMediaPlayback = true
         config.mediaTypesRequiringUserActionForPlayback = []
+        // YouTube's full-screen button uses the Fullscreen API, which
+        // WKWebView leaves off unless the app turns it on.
+        config.preferences.isElementFullscreenEnabled = true
         // Ask for the desktop site, as Safari on iPad does.
         config.defaultWebpagePreferences.preferredContentMode = .desktop
         // Google refuses sign-in from web views whose user agent lacks the
