@@ -23,7 +23,7 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>TCRulesURL</key>
-	<string>https://raw.githubusercontent.com/ilmarislabs/tubeclean-rules/main/dist/tubeclean.js</string>
+	<string>https://raw.githubusercontent.com/odysseyofmayhem/tubeclean-rules/main/dist/tubeclean.js</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

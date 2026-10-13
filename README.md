@@ -9,7 +9,7 @@ The app is a single web view locked to YouTube's desktop site (`www.youtube.com`
 - hides any ad element that still slips through
 - mutes any ad that still plays and presses Skip
 
-The blocking script is built in the sibling repo [`tubeclean-rules`](../tubeclean-rules). The app ships with a copy of it, and checks GitHub for a newer version every 6 hours. A YouTube change can therefore be fixed without rebuilding the app.
+The blocking script is built in the sibling repo [`tubeclean-rules`](https://github.com/odysseyofmayhem/tubeclean-rules). The app ships with a copy of it, and checks GitHub for a newer version every 6 hours. A YouTube change can therefore be fixed without rebuilding the app.
 
 ## Requirements
 
